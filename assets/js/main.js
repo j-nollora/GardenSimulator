@@ -23,6 +23,7 @@ function updateStatsUI() {
     document.getElementById('stat-coins').textContent = userCoins;
     
     if (window.runPython) {
+        // Fetch current season and reset season-day count directly from Python instance
         const seasonInfo = window.runPython(`f"{climate_queue.get_current_season()} (Day {climate_queue.current_day})"`);
         const weatherInfo = window.runPython(`climate_queue.get_current_weather()`);
         const aoeInfo = window.runPython(`f"Tool Tier: {quest_tree.get_aoe_range()}x{quest_tree.get_aoe_range()} AOE"`);
@@ -277,19 +278,48 @@ item.get("type") == "crop" if item else False
         return;
     }
 
+    // Process quest turn-in safely without complex returns
     const resJson = window.runPython(`
+import json
+
+exp_amt = getattr(quest_tree.current_node, 'exp_reward', 100)
+coin_amt = getattr(quest_tree.current_node, 'coin_reward', 50)
+
 inventory_hash.consume("${selectedInventoryKey}")
-level_up = quest_tree.add_exp(300)
-json.dumps({"level_up": level_up, "perk": quest_tree.current_node.perk})
+
+lvl_up = quest_tree.add_exp(exp_amt)
+perk_text = getattr(quest_tree.current_node, 'perk', '')
+
+json.dumps({
+    "exp": exp_amt,
+    "coins": coin_amt,
+    "level_up": True if lvl_up else False,
+    "perk": perk_text
+})
     `);
 
-    const res = JSON.parse(resJson);
-    if (res.level_up) {
-        logConsole(`Quest Completed: The Frog Prince Leveled Up. You receive ${res.perk}`);
-    } else {
-        logConsole(`Quest Completed: You received 300 exp from Frog Prince's quest.`);
+    if (!resJson) {
+        logConsole("❌ An error occurred during Python quest evaluation.");
+        return;
     }
 
+    const res = JSON.parse(resJson);
+
+    // Award base quest coins
+    userCoins += res.coins;
+
+    if (res.level_up) {
+        const currentLvl = window.runPython(`quest_tree.current_node.level`);
+        const levelBonus = 200 * currentLvl;
+        userCoins += levelBonus;
+        
+        logConsole(`🎉 LEVEL UP! Frog Prince leveled up! Unlocked: ${res.perk}`);
+        logConsole(`🎁 Received Quest Reward (+${res.exp} EXP, +${res.coins} Coins) + LEVEL BONUS (+${levelBonus} Coins)!`);
+    } else {
+        logConsole(`🐸 Quest Hand-In Successful! Received +${res.exp} EXP & +${res.coins} Coins!`);
+    }
+
+    // Clear selection if depleted
     const remCount = window.runPython(`
 item = inventory_hash.get("${selectedInventoryKey}")
 item.get("count", 0) if item else 0
@@ -297,6 +327,8 @@ item.get("count", 0) if item else 0
 
     if (!remCount || remCount <= 0) {
         selectedInventoryKey = null;
+        const indicator = document.getElementById('active-item-indicator');
+        if (indicator) indicator.textContent = 'Selected: None';
     }
 
     renderMinecraftHotbar();
