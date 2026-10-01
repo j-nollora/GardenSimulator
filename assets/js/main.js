@@ -1,6 +1,5 @@
-// JS UI State Variables
 let activeTool = 'hoe';
-let selectedInventoryKey = 'Turnip Seed';
+let selectedInventoryKey = null;
 
 let userEnergy = 100;
 const maxEnergy = 100;
@@ -14,6 +13,11 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function updateStatsUI() {
+    if (window.runPython) {
+        maxBucket = window.runPython(`quest_tree.get_max_bucket()`) || 5;
+        if (userBucket > maxBucket) userBucket = maxBucket;
+    }
+
     document.getElementById('stat-energy').textContent = `${userEnergy} / ${maxEnergy}`;
     document.getElementById('stat-bucket').textContent = `${userBucket} / ${maxBucket} L`;
     document.getElementById('stat-coins').textContent = userCoins;
@@ -21,21 +25,25 @@ function updateStatsUI() {
     if (window.runPython) {
         const seasonInfo = window.runPython(`f"{climate_queue.get_current_season()} (Day {climate_queue.current_day})"`);
         const weatherInfo = window.runPython(`climate_queue.get_current_weather()`);
-        const aoeInfo = window.runPython(`f"Tool Tier: {quest_tree.current_node.perk} ({quest_tree.get_aoe_range()}x{quest_tree.get_aoe_range()})"`);
+        const aoeInfo = window.runPython(`f"Tool Tier: {quest_tree.get_aoe_range()}x{quest_tree.get_aoe_range()} AOE"`);
         
         if (seasonInfo) document.getElementById('stat-season').textContent = seasonInfo;
         if (weatherInfo) document.getElementById('stat-weather').textContent = weatherInfo;
         if (aoeInfo) document.getElementById('aoe-status').textContent = aoeInfo;
         
-        // Sync Frog Quest Info
         const questDesc = window.runPython(`quest_tree.get_current_quest_desc()`);
         const frogLevel = window.runPython(`quest_tree.current_node.level`);
         const frogTitle = window.runPython(`quest_tree.current_node.title`);
+        const frogExp = window.runPython(`quest_tree.current_exp`);
+        const reqExp = window.runPython(`quest_tree.exp_to_next_level`);
         
         if (questDesc) document.getElementById('frog-quest-desc').textContent = `"${questDesc}"`;
         if (frogLevel) document.getElementById('frog-level').textContent = `Lvl ${frogLevel}`;
         if (frogTitle) document.getElementById('frog-title').textContent = frogTitle;
         if (frogLevel === 4) document.getElementById('frog-avatar').textContent = "👑";
+
+        const expPercent = Math.min(100, Math.floor((frogExp / reqExp) * 100));
+        document.getElementById('frog-exp-bar').style.width = `${expPercent}%`;
     }
 }
 
@@ -45,34 +53,36 @@ function setTool(toolName) {
     const selectedBtn = document.getElementById(`tool-${toolName}`);
     if (selectedBtn) selectedBtn.classList.add('active');
 
-    logConsole(`Selected Action Tool: ${toolName.toUpperCase()}`);
+    logConsole(`Selected Tool: ${toolName.toUpperCase()}`);
+}
+
+function refillWaterAtWell() {
+    if (activeTool !== 'water') {
+        logConsole("⚠️ Select the Water Can tool before clicking the Royal Well!");
+        return;
+    }
+    if (userEnergy < 10) {
+        logConsole("❌ Need 10 Energy to refill water at the well!");
+        return;
+    }
+    userEnergy -= 10;
+    userBucket = maxBucket;
+    window.runPython(`grid.bucket_level = ${maxBucket}`);
+    logConsole(`🌊 Refilled watering can to ${maxBucket}L at the Royal Well! (-10 Energy)`);
+    updateStatsUI();
 }
 
 function handleTileClick(r, c) {
     if (!window.runPython) return;
 
-    if (activeTool === 'refill') {
-        if (userEnergy < 10) {
-            logConsole("❌ Need 10 Energy to refill bucket at the well!");
-            return;
-        }
-        userEnergy -= 10;
-        userBucket = maxBucket;
-        window.runPython(`grid.bucket_level = ${maxBucket}`);
-        logConsole("🌊 Refilled bucket to full capacity (5L) at the well! (-10 Energy)");
-        updateStatsUI();
-        return;
-    }
-
     if (userEnergy < 5) {
-        logConsole("❌ Out of energy! End Day to recover.");
+        logConsole("❌ Out of energy! Click End Day to recover.");
         return;
     }
 
     const aoe = window.runPython(`quest_tree.get_aoe_range()`) || 1;
     let actionExecuted = false;
 
-    // Loop through AOE tiles
     for (let dr = 0; dr < aoe; dr++) {
         for (let dc = 0; dc < aoe; dc++) {
             const tr = r + dr;
@@ -94,28 +104,27 @@ function executeToolOnTile(r, c) {
     if (activeTool === 'hoe') {
         const ok = window.runPython(`grid.till_soil(${r}, ${c})`);
         if (ok) {
-            window.runPython(`stack.push({"action": "till", "r": ${r}, "c": ${c}})` );
-            logConsole(`Tilled tile [${r}, ${c}]`);
+            logConsole(`Tilled soil at tile [${r}, ${c}]`);
             return true;
         }
     } else if (activeTool === 'water') {
         if (userBucket <= 0) {
-            logConsole("❌ Water Can is empty (0/5 L)! Use 'Refill Bucket' tool.");
+            logConsole("❌ Water Can is empty (0 L)! Click on the Royal Well to refill.");
             return false;
         }
         const ok = window.runPython(`grid.water_soil(${r}, ${c})`);
         if (ok) {
             userBucket -= 1;
-            window.runPython(`stack.push({"action": "water", "r": ${r}, "c": ${c}})` );
             logConsole(`Watered tile [${r}, ${c}] (-1L Water)`);
             return true;
         }
     } else if (activeTool === 'plant') {
         if (!selectedInventoryKey || !selectedInventoryKey.includes('Seed')) {
-            logConsole("❌ Select a seed from the Inventory Hotbar first!");
+            logConsole("❌ Select a seed from your Inventory Hotbar first!");
             return false;
         }
-        const item = JSON.parse(window.runPython(`json.dumps(inventory_hash.get("${selectedInventoryKey}"))`));
+        const itemJson = window.runPython(`json.dumps(inventory_hash.get("${selectedInventoryKey}"))`);
+        const item = itemJson ? JSON.parse(itemJson) : null;
         if (!item || item.count <= 0) {
             logConsole(`❌ No ${selectedInventoryKey}s remaining!`);
             return false;
@@ -124,23 +133,31 @@ function executeToolOnTile(r, c) {
         const cropKey = item.crop_key;
         const planted = window.runPython(`
 crop = CROP_DATABASE.get("${cropKey}")
-if grid.plant_seed(${r}, ${c}, crop):
+result = grid.plant_seed(${r}, ${c}, crop)
+if result:
     inventory_hash.consume("${selectedInventoryKey}")
-    stack.push({"action": "plant", "r": ${r}, "c": ${c}, "seed_key": "${selectedInventoryKey}"})
     True
 else:
     False
         `);
 
         if (planted) {
-            logConsole(`🌱 Planted ${cropKey} at [${r}, ${c}]`);
+            logConsole(`🌱 Planted ${cropKey} at tile [${r}, ${c}]`);
+            // Reset selected seed key if inventory is exhausted
+            const checkRemaining = window.runPython(`json.dumps(inventory_hash.get("${selectedInventoryKey}"))`);
+            const remItem = checkRemaining ? JSON.parse(checkRemaining) : null;
+            if (!remItem || remItem.count <= 0) {
+                selectedInventoryKey = null;
+            }
             renderMinecraftHotbar();
             return true;
+        } else {
+            logConsole(`⚠️ Cannot plant at [${r}, ${c}]! (Tile must be tilled brown soil without existing crops)`);
         }
     } else if (activeTool === 'fertilizer') {
         const applied = window.runPython(`grid.apply_fertilizer(${r}, ${c})`);
         if (applied) {
-            logConsole(`🧪 Applied fertilizer to [${r}, ${c}] (-1 Growth Day Required)`);
+            logConsole(`🧪 Applied fertilizer to tile [${r}, ${c}]`);
             return true;
         }
     } else if (activeTool === 'scythe') {
@@ -148,31 +165,32 @@ else:
 crop_obj = grid.harvest_crop(${r}, ${c})
 if crop_obj:
     inventory_hash.add(crop_obj.name, {"type": "crop", "count": 1, "icon": crop_obj.symbol, "crop_key": crop_obj.name})
-    stack.push({"action": "harvest", "r": ${r}, "c": ${c}})
     crop_obj.name
 else:
     None
         `);
 
         if (harvested) {
-            logConsole(`🌾 Harvested 1x ${harvested} from [${r}, ${c}]!`);
+            logConsole(`🌾 Harvested 1x ${harvested} from tile [${r}, ${c}]!`);
             renderMinecraftHotbar();
             return true;
         }
     } else if (activeTool === 'shovel') {
-        // Undo/remove seed using shovel
         const removed = window.runPython(`
 tile = grid.get_tile(${r}, ${c})
-if tile and tile.crop:
-    c_name = tile.crop.name
+if tile and (tile.crop is not None or tile.is_tilled):
+    c_name = tile.crop.name if tile.crop else "tilled soil"
     tile.crop = None
     tile.growth_stage = 0
+    tile.is_tilled = False
+    tile.is_watered = False
+    tile.is_wilted = False
     c_name
 else:
     None
         `);
         if (removed) {
-            logConsole(`⛏️ Dug up seed/crop ${removed} at [${r}, ${c}]!`);
+            logConsole(`⛏️ Cleared ${removed} from tile [${r}, ${c}]!`);
             return true;
         }
     }
@@ -185,7 +203,7 @@ function advanceNextDay() {
     userEnergy = maxEnergy;
     window.runPython(`climate_queue.advance_day(grid)`);
     
-    logConsole("☀️ Advanced to Next Day! Energy restored. Out-of-season crops wilted!");
+    logConsole("☀️ Advanced to Next Day! Energy restored. Unwatered or out-of-season crops wilted!");
     updateStatsUI();
     window.syncPythonToUI();
 }
@@ -196,25 +214,35 @@ function submitQuestCrop() {
         return;
     }
 
-    const item = JSON.parse(window.runPython(`json.dumps(inventory_hash.get("${selectedInventoryKey}"))`));
+    const itemJson = window.runPython(`json.dumps(inventory_hash.get("${selectedInventoryKey}"))`);
+    if (!itemJson || itemJson === "null") {
+        logConsole(`❌ Invalid item selection!`);
+        return;
+    }
+    const item = JSON.parse(itemJson);
     if (!item || item.type !== 'crop' || item.count <= 0) {
-        logConsole(`❌ ${selectedInventoryKey} is not a valid harvested crop in your inventory!`);
+        logConsole(`❌ ${selectedInventoryKey} is not a valid crop!`);
         return;
     }
 
-    const success = window.runPython(`
+    const resJson = window.runPython(`
 req_crop = quest_tree.current_node.required_crop
 if "${selectedInventoryKey}" == req_crop:
     inventory_hash.consume("${selectedInventoryKey}")
-    quest_tree.advance_quest()
-    True
+    level_up = quest_tree.add_exp(25)
+    json.dumps({"success": True, "level_up": level_up, "reward": quest_tree.current_node.perk})
 else:
-    False
+    json.dumps({"success": False})
     `);
 
-    if (success) {
-        userCoins += 50;
-        logConsole(`🎉 Quest Fulfilled! Handed over ${selectedInventoryKey}. Earned +50 Coins & Levelled up Frog!`);
+    const res = JSON.parse(resJson);
+    if (res.success) {
+        userCoins += 20;
+        logConsole(`🎉 Handed over 1x ${selectedInventoryKey}! Earned +20 Coins & +25 Frog EXP!`);
+        if (res.level_up) {
+            logConsole(`⭐ FROG PRINCE LEVEL UP! Unlocked Perk: ${res.reward}`);
+        }
+        selectedInventoryKey = null;
         renderMinecraftHotbar();
         updateStatsUI();
     } else {
@@ -223,44 +251,40 @@ else:
 }
 
 function buyMysteryBag(tier, cost) {
-    if (userCoins < cost) {
-        alert("Not enough coins!");
+    // Sync coins with Python engine state if available
+    let currentCoins = userCoins;
+    
+    if (currentCoins < cost) {
+        logConsole(`❌ Not enough coins! (Costs ${cost} coins, you have ${currentCoins})`);
         return;
     }
+    
     userCoins -= cost;
     
-    const drawnSeed = window.runPython(`
-bag_result = buy_seasonal_mystery_bag(${tier}, climate_queue.get_current_season())
-inventory_hash.add(f"{bag_result.name} Seed", {"type": "seed", "count": 1, "icon": "🌱", "crop_key": bag_result.name})
-bag_result.name
+    const resJson = window.runPython(`
+crop_obj = buy_seasonal_mystery_bag(${tier}, climate_queue.get_current_season())
+if crop_obj:
+    seed_name = f"{crop_obj.name} Seed"
+    inventory_hash.add(seed_name, {"type": "seed", "count": 1, "icon": "🌱", "crop_key": crop_obj.name})
+    json.dumps({"success": True, "name": crop_obj.name})
+else:
+    # Fallback to Turnip if seasonal selection fails
+    inventory_hash.add("Turnip Seed", {"type": "seed", "count": 1, "icon": "🌱", "crop_key": "Turnip"})
+    json.dumps({"success": True, "name": "Turnip"})
     `);
 
-    logConsole(`🛒 Bought Tier ${tier} Seed Bag! Drew: ${drawnSeed} Seed!`);
+    let drawnSeed = "Turnip";
+    try {
+        const res = JSON.parse(resJson);
+        if (res && res.name) drawnSeed = res.name;
+    } catch(e) {
+        console.error("Error parsing seed response:", e);
+    }
+
+    logConsole(`🛒 Purchased Tier ${tier} Mystery Seed Bag for ${cost} Coins! Received: ${drawnSeed} Seed!`);
     updateStatsUI();
     renderMinecraftHotbar();
     closeModal('shop-modal');
-}
-
-function buyFertilizer(cost) {
-    if (userCoins < cost) {
-        alert("Not enough coins!");
-        return;
-    }
-    userCoins -= cost;
-    logConsole("🛒 Purchased Fertilizer!");
-    updateStatsUI();
-    closeModal('shop-modal');
-}
-
-function handleUndo() {
-    if (!window.runPython) return;
-    const undone = window.runPython(`stack.pop()`);
-    if (undone) {
-        logConsole(`↩️ Undone last action!`);
-        window.syncPythonToUI();
-    } else {
-        logConsole("Nothing in stack to undo.");
-    }
 }
 
 function renderMinecraftHotbar() {
@@ -286,7 +310,8 @@ function renderMinecraftHotbar() {
 
             slotEl.onclick = () => {
                 selectedInventoryKey = item.key;
-                document.getElementById('active-item-indicator').textContent = `Selected: ${selectedInventoryKey}`;
+                const indicator = document.getElementById('active-item-indicator');
+                if (indicator) indicator.textContent = `Selected: ${selectedInventoryKey}`;
                 renderMinecraftHotbar();
             };
         } else {
@@ -340,6 +365,8 @@ function renderGridFromMatrix(matrix) {
                 if (tile.stage === 0) symbol = "🌱";
                 else if (tile.stage < tile.max_stage) symbol = "🌿";
                 else symbol = tile.symbol;
+            } else if (tile.tilled) {
+                symbol = "🧱";
             }
 
             el.innerHTML = `

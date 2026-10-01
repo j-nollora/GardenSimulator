@@ -21,7 +21,6 @@ async function initPyodideEngine() {
     try {
         window.pyodideInstance = await loadPyodide();
         
-        // Load Python module code text into cache for module viewer
         for (const file of moduleFiles) {
             try {
                 const response = await fetch(`python/modules/${file}`);
@@ -35,21 +34,17 @@ async function initPyodideEngine() {
             }
         }
 
-        // Initialize Python runtime instances
+        // Initialize runtime instances without default items in inventory
         window.pyodideInstance.runPython(`
 grid = SoilMatrixGrid(5, 5)
 stack = ActionStack()
 climate_queue = ClimateQueue()
 quest_tree = QuestProgressionTree()
 inventory_hash = InventoryHashTable()
-
-# Pre-populate starting inventory
-inventory_hash.add("Turnip Seed", {"type": "seed", "count": 3, "icon": "🌰", "crop_key": "Turnip"})
-inventory_hash.add("Strawberry Seed", {"type": "seed", "count": 1, "icon": "🌱", "crop_key": "Strawberry"})
         `);
 
         if (consoleEl) {
-            consoleEl.textContent = "✅ Pyodide WASM Engine initialized!\nReady for actions.";
+            consoleEl.textContent = "✅ Pyodide WASM Engine initialized!\nReady for actions. Purchase seeds in the Frog Shop!";
         }
         
         if (window.syncPythonToUI) window.syncPythonToUI();
