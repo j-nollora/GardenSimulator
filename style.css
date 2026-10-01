@@ -196,3 +196,56 @@ body {
     border-bottom: 1px solid #1e293b;
     padding-bottom: 0.5rem;
 }
+
+.shop-seasonal-section {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.shop-season-header {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #fde047;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.shop-crop-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 140px;
+    overflow-y: auto;
+}
+
+.shop-crop-badge {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 0.8rem;
+}
+.shop-crop-badge-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    color: #e2e8f0;
+}
+
+.shop-crop-badge-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 0.75rem;
+    color: #94a3b8;
+}
+.rarity-common { color: #9ca3af; font-weight: 600; }
+.rarity-uncommon { color: #60a5fa; font-weight: 600; }
+.rarity-rare { color: #c084fc; font-weight: 600; }
+

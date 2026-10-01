@@ -551,7 +551,90 @@ function logConsole(msg) {
     if (el) el.textContent = `> ${msg}\n` + el.textContent;
 }
 
-function openModal(id) { document.getElementById(id).classList.add('active'); }
+function openModal(id) {
+    if (id === 'shop-modal') {
+        renderShopSeasonalCrops();
+    }
+    const modal = document.getElementById(id);
+    if (modal) modal.classList.add('active');
+}
+
+function renderShopSeasonalCrops() {
+    if (!window.runPython) return;
+
+    // Fetch current season and seasonal crops from Pyodide
+    const cropsJson = window.runPython(`
+import json
+
+season = climate_queue.get_current_season()
+
+# Filter CROP_DATABASE for crops valid in the active season
+seasonal_crops = []
+if 'CROP_DATABASE' in globals():
+    for name, crop in CROP_DATABASE.items():
+        # Check if crop is valid for current season or all-season
+        c_season = getattr(crop, 'season', 'Spring')
+        if c_season.lower() == season.lower() or c_season.lower() == 'all':
+            seasonal_crops.append({
+                "name": crop.name,
+                "symbol": getattr(crop, 'symbol', '🌱'),
+                "days": getattr(crop, 'days_to_grow', 1),
+                "rarity": getattr(crop, 'rarity', 'Common').capitalize()
+            })
+
+json.dumps({
+    "season": season,
+    "crops": seasonal_crops
+})
+    `);
+
+    if (!cropsJson) return;
+
+    try {
+        const data = JSON.parse(cropsJson);
+        const titleEl = document.getElementById('shop-season-title');
+        const listEl = document.getElementById('shop-crop-list');
+
+        if (!titleEl || !listEl) return;
+
+        // Season Icons
+        const seasonIcons = {
+            'Spring': '🌸',
+            'Summer': '☀️',
+            'Autumn': '🍂',
+            'Fall': '🍂',
+            'Winter': '❄️'
+        };
+
+        const icon = seasonIcons[data.season] || '🌾';
+        titleEl.textContent = `${icon} ${data.season} Crops Available in Seed Bags:`;
+
+        if (data.crops.length === 0) {
+            listEl.innerHTML = `<div style="font-size: 0.8rem; color: #94a3b8; text-align: center; padding: 8px;">No specific crops for this season.</div>`;
+            return;
+        }
+
+        listEl.innerHTML = data.crops.map(crop => {
+            const rarityClass = `rarity-${crop.rarity.toLowerCase()}`;
+            return `
+                <div class="shop-crop-badge">
+                    <div class="shop-crop-badge-left">
+                        <span style="font-size: 1.1rem;">${crop.symbol}</span>
+                        <span>${crop.name}</span>
+                    </div>
+                    <div class="shop-crop-badge-right">
+                        <span>⏳ ${crop.days} Days</span>
+                        <span class="${rarityClass}">${crop.rarity}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+    } catch(e) {
+        console.error("Error rendering shop crop list:", e);
+    }
+}
+
 function closeModal(id) { document.getElementById(id).classList.remove('active'); }
 
 function updateCodeViewer() {
