@@ -35,7 +35,7 @@
                 </div>
                 <div class="bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-lg text-center">
                     <span class="text-yellow-400 block">🪙 Coins</span>
-                    <span id="stat-coins" class="text-sm">50</span>
+                    <span id="stat-coins" class="text-sm">100</span>
                 </div>
                 <div class="bg-slate-950 border border-slate-800 px-3 py-1.5 rounded-lg text-center">
                     <span class="text-emerald-400 block">📅 Calendar</span>
@@ -76,15 +76,18 @@
                                 <span class="font-bold text-sm text-emerald-300" id="frog-title">Frog Prince (Fallen King)</span>
                                 <span class="bg-amber-500 text-slate-950 text-[10px] px-1.5 py-0.5 rounded font-extrabold" id="frog-level">Lvl 1</span>
                             </div>
-                            <p class="text-xs text-emerald-400 italic mt-0.5" id="frog-quest-desc">"Ribbit! Bring me 1x Turnip to gain 25 EXP!"</p>
+                            <p class="text-xs text-emerald-400 italic mt-0.5" id="frog-quest-desc">"Bring me 1x Turnip for +25 EXP!"</p>
                             <div class="w-full bg-slate-950 rounded-full h-1.5 mt-1.5 border border-slate-800">
                                 <div id="frog-exp-bar" class="bg-emerald-500 h-1.5 rounded-full transition-all duration-300" style="width: 0%"></div>
                             </div>
                         </div>
                     </div>
-                    <div class="flex flex-col gap-1">
+                    <div class="flex flex-col gap-1.5">
                         <button onclick="submitQuestCrop()" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3 py-1.5 rounded-lg font-bold border border-emerald-400">
                             🎁 Hand Over Item
+                        </button>
+                        <button onclick="sellHarvestedCrop()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 rounded-lg font-bold border border-blue-400">
+                            💰 Sell Crop
                         </button>
                         <button onclick="openModal('shop-modal')" class="bg-amber-600 hover:bg-amber-500 text-white text-xs px-3 py-1.5 rounded-lg font-bold border border-amber-400">
                             🛒 Frog Shop
@@ -100,10 +103,8 @@
                     </div>
 
                     <div class="flex items-center justify-center gap-4">
-                        <!-- Soil Matrix Grid -->
                         <div id="soil-grid" class="soil-matrix-grid"></div>
 
-                        <!-- Dedicated Well Interactive Element -->
                         <div onclick="refillWaterAtWell()" title="Click with Water Can selected to refill" class="flex flex-col items-center justify-center p-4 bg-slate-950 border-2 border-cyan-800 hover:border-cyan-400 rounded-xl cursor-pointer transition-all hover:scale-105 group">
                             <div class="p-3 bg-cyan-950 border border-cyan-700 rounded-full group-hover:bg-cyan-900">
                                 <i data-lucide="waves" class="w-8 h-8 text-cyan-400"></i>
@@ -159,10 +160,9 @@ Initializing WASM Python Engine...
             </div>
             <div class="text-xs text-slate-300 space-y-3 max-h-[70vh] overflow-y-auto p-1 leading-relaxed">
                 <p><strong>⚡ Energy & Bucket:</strong> Tools cost 5 energy. Refill your bucket at the Royal Well by selecting the Water Can and clicking the Well (costs 10 energy).</p>
-                <p><strong>📅 Seasons & Wilting:</strong> Unwatered or out-of-season crops wilt at day end.</p>
-                <p><strong>🛒 Frog Shop:</strong> Purchase Mystery Seed Bags to acquire seeds.</p>
-                <p><strong>🐸 Frog Quests & EXP:</strong> Fulfill quests to earn EXP & level up the Frog Prince to unlock upgrades (Max Bucket & AOE Tooling).</p>
-                <p><strong>⛏️ Shovel Tool:</strong> Use the shovel to dig up seeds or clear tile states.</p>
+                <p><strong>💧 Watering Mandate:</strong> Plants require 5 minimum growth days and must be watered daily! Unwatered crops wilt overnight.</p>
+                <p><strong>🧪 Fertilizer Shield:</strong> Apply fertilizer to shield crops against overnight disasters. Does not accelerate growth or bypass watering.</p>
+                <p><strong>💰 Selling Crops:</strong> Sell harvested crops to the Frog Prince for coins or hand them over to complete EXP quests.</p>
             </div>
         </div>
     </div>
@@ -205,17 +205,24 @@ Initializing WASM Python Engine...
             <div class="space-y-3">
                 <div class="bg-slate-950 border border-slate-800 p-3 rounded-lg flex justify-between items-center">
                     <div>
+                        <div class="font-bold text-xs text-purple-300">🧪 Plant Defense Fertilizer</div>
+                        <div class="text-[10px] text-slate-400">Shields crop against overnight disaster damage</div>
+                    </div>
+                    <button onclick="buyFertilizer(20)" class="bg-purple-600 hover:bg-purple-500 text-white text-xs px-3 py-1.5 rounded font-bold">🪙 20 Coins</button>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 p-3 rounded-lg flex justify-between items-center">
+                    <div>
                         <div class="font-bold text-xs text-amber-300">Tier 1 Mystery Seed Bag</div>
                         <div class="text-[10px] text-slate-400">Common: 70% | Uncommon: 25% | Rare: 5%</div>
                     </div>
-                    <button onclick="buyMysteryBag(1, 10)" class="bg-amber-600 hover:bg-amber-500 text-white text-xs px-3 py-1.5 rounded font-bold">🪙 15 Coins</button>
+                    <button onclick="buyMysteryBag(1, 15)" class="bg-amber-600 hover:bg-amber-500 text-white text-xs px-3 py-1.5 rounded font-bold">🪙 15 Coins</button>
                 </div>
                 <div class="bg-slate-950 border border-slate-800 p-3 rounded-lg flex justify-between items-center">
                     <div>
                         <div class="font-bold text-xs text-amber-300">Tier 2 Mystery Seed Bag</div>
                         <div class="text-[10px] text-slate-400">Common: 40% | Uncommon: 45% | Rare: 15%</div>
                     </div>
-                    <button onclick="buyMysteryBag(2, 25)" class="bg-amber-600 hover:bg-amber-500 text-white text-xs px-3 py-1.5 rounded font-bold">🪙 30 Coins</button>
+                    <button onclick="buyMysteryBag(2, 30)" class="bg-amber-600 hover:bg-amber-500 text-white text-xs px-3 py-1.5 rounded font-bold">🪙 30 Coins</button>
                 </div>
                 <div class="bg-slate-950 border border-slate-800 p-3 rounded-lg flex justify-between items-center">
                     <div>

@@ -34,7 +34,7 @@ async function initPyodideEngine() {
             }
         }
 
-        // Initialize runtime instances without default items in inventory
+        // Initialize runtime instances after all classes are defined
         window.pyodideInstance.runPython(`
 grid = SoilMatrixGrid(5, 5)
 stack = ActionStack()

@@ -5,7 +5,7 @@ let userEnergy = 100;
 const maxEnergy = 100;
 let userBucket = 5;
 let maxBucket = 5;
-let userCoins = 50;
+let userCoins = 100;
 
 document.addEventListener('DOMContentLoaded', () => {
     renderFallbackGrid();
@@ -123,73 +123,106 @@ function executeToolOnTile(r, c) {
             logConsole("❌ Select a seed from your Inventory Hotbar first!");
             return false;
         }
-        const itemJson = window.runPython(`json.dumps(inventory_hash.get("${selectedInventoryKey}"))`);
-        const item = itemJson ? JSON.parse(itemJson) : null;
-        if (!item || item.count <= 0) {
+        const count = window.runPython(`
+item = inventory_hash.get("${selectedInventoryKey}")
+item.get("count", 0) if item else 0
+        `);
+        if (!count || count <= 0) {
             logConsole(`❌ No ${selectedInventoryKey}s remaining!`);
             return false;
         }
 
-        const cropKey = item.crop_key;
-        const planted = window.runPython(`
-crop = CROP_DATABASE.get("${cropKey}")
-result = grid.plant_seed(${r}, ${c}, crop)
-if result:
-    inventory_hash.consume("${selectedInventoryKey}")
-    True
-else:
-    False
-        `);
+        const cropKey = selectedInventoryKey.replace(" Seed", "");
+        const planted = window.runPython(`grid.plant_seed(${r}, ${c}, CROP_DATABASE.get("${cropKey}"))`);
 
         if (planted) {
+            window.runPython(`inventory_hash.consume("${selectedInventoryKey}")`);
             logConsole(`🌱 Planted ${cropKey} at tile [${r}, ${c}]`);
-            // Reset selected seed key if inventory is exhausted
-            const checkRemaining = window.runPython(`json.dumps(inventory_hash.get("${selectedInventoryKey}"))`);
-            const remItem = checkRemaining ? JSON.parse(checkRemaining) : null;
-            if (!remItem || remItem.count <= 0) {
+            
+            const remCount = window.runPython(`
+item = inventory_hash.get("${selectedInventoryKey}")
+item.get("count", 0) if item else 0
+            `);
+            if (!remCount || remCount <= 0) {
                 selectedInventoryKey = null;
             }
             renderMinecraftHotbar();
             return true;
         } else {
-            logConsole(`⚠️ Cannot plant at [${r}, ${c}]! (Tile must be tilled brown soil without existing crops)`);
+            logConsole(`⚠️ Cannot plant at [${r}, ${c}]! (Tile must be tilled soil without existing crops)`);
         }
     } else if (activeTool === 'fertilizer') {
+        if (!selectedInventoryKey || selectedInventoryKey !== 'Fertilizer') {
+            logConsole("❌ Select Fertilizer from your Inventory Hotbar first! (Purchase from Frog Shop)");
+            return false;
+        }
+        const count = window.runPython(`
+item = inventory_hash.get("Fertilizer")
+item.get("count", 0) if item else 0
+        `);
+        if (!count || count <= 0) {
+            logConsole("❌ Out of Fertilizer! Purchase more from the Frog Shop.");
+            return false;
+        }
+
         const applied = window.runPython(`grid.apply_fertilizer(${r}, ${c})`);
         if (applied) {
-            logConsole(`🧪 Applied fertilizer to tile [${r}, ${c}]`);
-            return true;
-        }
-    } else if (activeTool === 'scythe') {
-        const harvested = window.runPython(`
-crop_obj = grid.harvest_crop(${r}, ${c})
-if crop_obj:
-    inventory_hash.add(crop_obj.name, {"type": "crop", "count": 1, "icon": crop_obj.symbol, "crop_key": crop_obj.name})
-    crop_obj.name
-else:
-    None
-        `);
-
-        if (harvested) {
-            logConsole(`🌾 Harvested 1x ${harvested} from tile [${r}, ${c}]!`);
+            window.runPython(`inventory_hash.consume("Fertilizer")`);
+            logConsole(`🧪 Applied fertilizer defense shield to tile [${r}, ${c}]!`);
+            
+            const remCount = window.runPython(`
+item = inventory_hash.get("Fertilizer")
+item.get("count", 0) if item else 0
+            `);
+            if (!remCount || remCount <= 0) {
+                selectedInventoryKey = null;
+            }
             renderMinecraftHotbar();
             return true;
+        } else {
+            logConsole(`⚠️ Cannot apply fertilizer at [${r}, ${c}]! (Requires an unshielded active crop)`);
         }
-    } else if (activeTool === 'shovel') {
-        const removed = window.runPython(`
-tile = grid.get_tile(${r}, ${c})
-if tile and (tile.crop is not None or tile.is_tilled):
-    c_name = tile.crop.name if tile.crop else "tilled soil"
-    tile.crop = None
-    tile.growth_stage = 0
-    tile.is_tilled = False
-    tile.is_watered = False
-    tile.is_wilted = False
-    c_name
-else:
-    None
+    } else if (activeTool === 'scythe') {
+        window.runPython(`
+_tile = grid.get_tile(${r}, ${c})
+_has_crop = _tile.crop is not None if _tile else False
+_is_ready = (_tile.growth_stage >= _tile.crop.days_to_grow) if (_tile and _tile.crop) else False
+_temp_harvested = grid.harvest_crop(${r}, ${c})
         `);
-        if (removed) {
+
+        const hasCrop = window.runPython(`_has_crop`);
+        const isReady = window.runPython(`_is_ready`);
+        const harvestedName = window.runPython(`_temp_harvested.name if _temp_harvested else None`);
+        const harvestedSymbol = window.runPython(`_temp_harvested.symbol if _temp_harvested else ''`);
+
+        if (harvestedName && harvestedName !== 'None') {
+            window.runPython(`inventory_hash.add("${harvestedName}", {"type": "crop", "count": 1, "icon": "${harvestedSymbol}", "crop_key": "${harvestedName}"})`);
+            logConsole(`🌾 Harvested 1x ${harvestedName} from tile [${r}, ${c}]!`);
+            renderMinecraftHotbar();
+            return true;
+        } else if (hasCrop && !isReady) {
+            logConsole(`⚠️ Crop at [${r}, ${c}] is not ready for harvest yet!`);
+        } else {
+            logConsole(`⚠️ There is nothing to harvest at tile [${r}, ${c}]!`);
+        }
+    
+    } else if (activeTool === 'shovel') {
+        window.runPython(`
+_tile = grid.get_tile(${r}, ${c})
+_removed_item = None
+if _tile and (_tile.crop is not None or _tile.is_tilled):
+    _removed_item = _tile.crop.name if _tile.crop else "tilled soil"
+    _tile.crop = None
+    _tile.growth_stage = 0
+    _tile.is_tilled = False
+    _tile.is_watered = False
+    _tile.is_wilted = False
+    _tile.is_fertilized = False
+    _tile.hp = 100
+        `);
+        const removed = window.runPython(`_removed_item`);
+
+        if (removed && removed !== 'None') {
             logConsole(`⛏️ Cleared ${removed} from tile [${r}, ${c}]!`);
             return true;
         }
@@ -203,7 +236,20 @@ function advanceNextDay() {
     userEnergy = maxEnergy;
     window.runPython(`climate_queue.advance_day(grid)`);
     
-    logConsole("☀️ Advanced to Next Day! Energy restored. Unwatered or out-of-season crops wilted!");
+    const disasterOccurred = window.runPython(`grid.disaster_occurred`);
+    const disasterName = window.runPython(`grid.last_disaster_name`);
+    const gridEl = document.getElementById('soil-grid');
+
+    if (disasterOccurred && disasterName) {
+        logConsole(`🚨 NIGHT DISASTER ALERT: A severe [${disasterName}] struck your field! Shielded crops absorbed damage!`);
+        if (gridEl) {
+            gridEl.classList.add('disaster-blink');
+            setTimeout(() => gridEl.classList.remove('disaster-blink'), 3000);
+        }
+    } else {
+        logConsole("☀️ Advanced to Next Day! Energy restored. Unwatered or out-of-season crops wilted!");
+    }
+
     updateStatsUI();
     window.syncPythonToUI();
 }
@@ -214,48 +260,104 @@ function submitQuestCrop() {
         return;
     }
 
-    const itemJson = window.runPython(`json.dumps(inventory_hash.get("${selectedInventoryKey}"))`);
-    if (!itemJson || itemJson === "null") {
-        logConsole(`❌ Invalid item selection!`);
+    const isCrop = window.runPython(`
+item = inventory_hash.get("${selectedInventoryKey}")
+item.get("type") == "crop" if item else False
+    `);
+
+    if (!isCrop) {
+        logConsole(`❌ ${selectedInventoryKey} is not a valid harvested crop!`);
         return;
     }
-    const item = JSON.parse(itemJson);
-    if (!item || item.type !== 'crop' || item.count <= 0) {
-        logConsole(`❌ ${selectedInventoryKey} is not a valid crop!`);
+
+    const reqCrop = window.runPython(`quest_tree.current_node.required_crop`);
+
+    if (selectedInventoryKey !== reqCrop) {
+        logConsole(`🐸 Frog Prince: "Ribbit! I do not want ${selectedInventoryKey} right now! Bring me ${reqCrop}!"`);
         return;
     }
 
     const resJson = window.runPython(`
-req_crop = quest_tree.current_node.required_crop
-if "${selectedInventoryKey}" == req_crop:
-    inventory_hash.consume("${selectedInventoryKey}")
-    level_up = quest_tree.add_exp(25)
-    json.dumps({"success": True, "level_up": level_up, "reward": quest_tree.current_node.perk})
-else:
-    json.dumps({"success": False})
+inventory_hash.consume("${selectedInventoryKey}")
+level_up = quest_tree.add_exp(300)
+json.dumps({"level_up": level_up, "perk": quest_tree.current_node.perk})
     `);
 
     const res = JSON.parse(resJson);
-    if (res.success) {
-        userCoins += 20;
-        logConsole(`🎉 Handed over 1x ${selectedInventoryKey}! Earned +20 Coins & +25 Frog EXP!`);
-        if (res.level_up) {
-            logConsole(`⭐ FROG PRINCE LEVEL UP! Unlocked Perk: ${res.reward}`);
-        }
-        selectedInventoryKey = null;
-        renderMinecraftHotbar();
-        updateStatsUI();
+    if (res.level_up) {
+        logConsole(`Quest Completed: The Frog Prince Leveled Up. You receive ${res.perk}`);
     } else {
-        logConsole(`🐸 Frog Prince: "Ribbit! I do not want ${selectedInventoryKey} right now!"`);
+        logConsole(`Quest Completed: You received 300 exp from Frog Prince's quest.`);
     }
+
+    const remCount = window.runPython(`
+item = inventory_hash.get("${selectedInventoryKey}")
+item.get("count", 0) if item else 0
+    `);
+
+    if (!remCount || remCount <= 0) {
+        selectedInventoryKey = null;
+    }
+
+    renderMinecraftHotbar();
+    updateStatsUI();
+}
+
+function sellHarvestedCrop() {
+    if (!selectedInventoryKey) {
+        logConsole("❌ Select a harvested crop from your inventory to sell!");
+        return;
+    }
+
+    const isCrop = window.runPython(`
+item = inventory_hash.get("${selectedInventoryKey}")
+item.get("type") == "crop" if item else False
+    `);
+
+    if (!isCrop) {
+        logConsole(`❌ ${selectedInventoryKey} is not a valid crop to sell!`);
+        return;
+    }
+
+    const sellPrice = window.runPython(`
+c_obj = CROP_DATABASE.get("${selectedInventoryKey}")
+c_obj.sell_price if c_obj else 30
+    `) || 30;
+
+    window.runPython(`inventory_hash.consume("${selectedInventoryKey}")`);
+    userCoins += Number(sellPrice);
+
+    logConsole(`💰 Sold 1x ${selectedInventoryKey} to the Frog Prince for +${sellPrice} Coins!`);
+    
+    const remCount = window.runPython(`
+item = inventory_hash.get("${selectedInventoryKey}")
+item.get("count", 0) if item else 0
+    `);
+
+    if (!remCount || remCount <= 0) {
+        selectedInventoryKey = null;
+    }
+
+    renderMinecraftHotbar();
+    updateStatsUI();
+}
+
+function buyFertilizer(cost) {
+    if (userCoins < cost) {
+        logConsole(`❌ Not enough coins! (Costs ${cost} coins, you have ${userCoins})`);
+        return;
+    }
+    userCoins -= cost;
+    window.runPython(`inventory_hash.add("Fertilizer", {"type": "fertilizer", "count": 1, "icon": "🧪", "crop_key": "Fertilizer"})`);
+    logConsole(`🛒 Purchased 1x Fertilizer for ${cost} Coins!`);
+    updateStatsUI();
+    renderMinecraftHotbar();
+    closeModal('shop-modal');
 }
 
 function buyMysteryBag(tier, cost) {
-    // Sync coins with Python engine state if available
-    let currentCoins = userCoins;
-    
-    if (currentCoins < cost) {
-        logConsole(`❌ Not enough coins! (Costs ${cost} coins, you have ${currentCoins})`);
+    if (userCoins < cost) {
+        logConsole(`❌ Not enough coins! (Costs ${cost} coins, you have ${userCoins})`);
         return;
     }
     
@@ -268,7 +370,6 @@ if crop_obj:
     inventory_hash.add(seed_name, {"type": "seed", "count": 1, "icon": "🌱", "crop_key": crop_obj.name})
     json.dumps({"success": True, "name": crop_obj.name})
 else:
-    # Fallback to Turnip if seasonal selection fails
     inventory_hash.add("Turnip Seed", {"type": "seed", "count": 1, "icon": "🌱", "crop_key": "Turnip"})
     json.dumps({"success": True, "name": "Turnip"})
     `);
@@ -331,6 +432,10 @@ json.dumps([
         "tilled": t.is_tilled,
         "watered": t.is_watered,
         "wilted": t.is_wilted,
+        "fertilized": t.is_fertilized,
+        "hp": t.hp,
+        "max_hp": t.max_hp,
+        "has_crop": t.crop is not None,
         "symbol": t.crop.symbol if t.crop else "",
         "stage": t.growth_stage,
         "max_stage": t.crop.days_to_grow if t.crop else 1
@@ -357,8 +462,9 @@ function renderGridFromMatrix(matrix) {
             if (tile.tilled) el.classList.add('tilled');
             if (tile.watered) el.classList.add('watered');
             if (tile.wilted) el.classList.add('wilted');
+            if (tile.fertilized) el.classList.add('fertilized');
 
-            let symbol = "🟫";
+            let symbol = "";
             if (tile.wilted) {
                 symbol = "🥀";
             } else if (tile.symbol) {
@@ -366,12 +472,27 @@ function renderGridFromMatrix(matrix) {
                 else if (tile.stage < tile.max_stage) symbol = "🌿";
                 else symbol = tile.symbol;
             } else if (tile.tilled) {
-                symbol = "🧱";
+                symbol = "";
+            }
+
+            let healthBarHtml = "";
+            if (tile.has_crop && !tile.wilted) {
+                const hpPct = Math.max(0, Math.min(100, Math.floor((tile.hp / tile.max_hp) * 100)));
+                const barColor = hpPct > 50 ? '#22c55e' : (hpPct > 20 ? '#eab308' : '#ef4444');
+                healthBarHtml = `
+                    <div class="crop-hp-bar-bg">
+                        <div class="crop-hp-bar-fill" style="width: ${hpPct}%; background-color: ${barColor};"></div>
+                    </div>
+                `;
             }
 
             el.innerHTML = `
-                <span style="font-size: 8px; color: rgba(253,230,138,0.5); align-self: flex-start;">${r},${c}</span>
+                <div class="tile-header">
+                    <span style="font-size: 8px; color: rgba(253,230,138,0.5);">${r},${c}</span>
+                    ${tile.fertilized ? '<span class="fertilizer-badge" title="Shielded with Fertilizer">🛡️</span>' : ''}
+                </div>
                 <span style="font-size: 1.25rem;">${symbol}</span>
+                ${healthBarHtml}
             `;
             el.onclick = () => handleTileClick(r, c);
             gridContainer.appendChild(el);
@@ -408,4 +529,4 @@ function updateCodeViewer() {
         viewer.textContent = window.pythonModules[selector.value] || "# Code loading...";
     }
 }
-window.updateCodeViewer = updateCodeViewer;
+window.updateCodeViewer = updateCodeViewer; 

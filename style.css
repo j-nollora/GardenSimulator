@@ -16,11 +16,23 @@ body {
     max-width: 440px;
     margin: 0 auto;
     width: 100%;
+    transition: box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+/* Red Blinking Animation for Disaster Nights */
+@keyframes disasterBlink {
+    0%, 100% { border-color: #0d0603; box-shadow: none; }
+    25%, 75% { border-color: #ef4444; box-shadow: 0 0 20px rgba(239, 68, 68, 0.8), inset 0 0 15px rgba(239, 68, 68, 0.5); }
+}
+
+.soil-matrix-grid.disaster-blink {
+    animation: disasterBlink 0.6s ease-in-out infinite;
 }
 
 .soil-tile {
+    position: relative;
     background-color: #522e16;
-    border: 2px solid #361d0d;
+    border: 2px solid #322419;
     border-radius: 0.5rem;
     aspect-ratio: 1 / 1;
     display: flex;
@@ -38,7 +50,7 @@ body {
     border-color: #10b981;
 }
 
-.soil-tile.tilled { background-color: #3b1f0d; }
+.soil-tile.tilled { background-color: #322418; }
 .soil-tile.watered {
     border-color: #3b82f6;
     box-shadow: inset 0 0 8px rgba(59, 130, 246, 0.6);
@@ -47,6 +59,38 @@ body {
     background-color: #262320;
     border-color: #78716c;
     opacity: 0.8;
+}
+.soil-tile.fertilized {
+    border-color: #a855f7;
+    box-shadow: inset 0 0 6px rgba(168, 85, 247, 0.5);
+}
+
+.tile-header {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.fertilizer-badge {
+    font-size: 0.65rem;
+    line-height: 1;
+}
+
+/* Crop Health Bar Elements */
+.crop-hp-bar-bg {
+    width: 100%;
+    height: 4px;
+    background-color: #18181b;
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 2px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.crop-hp-bar-fill {
+    height: 100%;
+    transition: width 0.3s ease, background-color 0.3s ease;
 }
 
 /* Tools Button Styling */
